@@ -7,9 +7,8 @@ from geometry_msgs.msg import PoseStamped
 from google import genai
 
 
-# ==========================================
+
 # 1. AI CONFIGURATION
-# ==========================================
 # Uses the GEMINI_API_KEY environment variable
 # that we already configured in the terminal.
 
@@ -24,9 +23,7 @@ if not API_KEY:
 client = genai.Client(api_key=API_KEY)
 
 
-# ==========================================
 # 2. MUSEUM KNOWLEDGE BASE
-# ==========================================
 # These are your colleague's original coordinates.
 # We may need to adjust them to match YOUR saved map.
 
@@ -39,11 +36,10 @@ MUSEUM_LOCATIONS = {
 }
 
 
-# ==========================================
+
 # 3. TRUE LLM INTENT PARSING
-# ==========================================
 def llm_parse_intent(user_text):
-    print("🧠 Thinking...")
+    print(" Thinking...")
 
     prompt = f"""
 You are the navigation brain for an autonomous security robot in a museum.
@@ -100,32 +96,30 @@ output "lobby".
             return location
 
         print(
-            f"⚠️ LLM returned an invalid location: "
+            f" LLM returned an invalid location: "
             f"'{location}'. Defaulting to lobby."
         )
 
         return "lobby"
 
     except Exception as e:
-        print(f"❌ API Error: {e}")
+        print(f" API Error: {e}")
         return "lobby"
 
 
-# ==========================================
 # 4. ROBOT EXECUTION
-# ==========================================
 def main():
 
     rclpy.init()
 
     navigator = BasicNavigator()
 
-    print("⏳ Waiting for Nav2 to boot up...")
+    print(" Waiting for Nav2 to boot up...")
 
     navigator.waitUntilNav2Active()
 
     print("\n========================================================")
-    print("🤖 TRUE AI SECURITY BOT READY.")
+    print(" TRUE AI SECURITY BOT READY.")
     print("Try: 'I think someone is messing with the servers'")
     print("Try: 'Did I leave my backpack near the old bones?'")
     print("Type 'exit' to quit.")
@@ -141,22 +135,18 @@ def main():
         if not user_command:
             continue
 
-        # ------------------------------------------
         # Ask Gemini where the robot should go
-        # ------------------------------------------
 
         target_location = llm_parse_intent(user_command)
 
         print(
-            f"🎯 AI concluded target is: "
+            f" AI concluded target is: "
             f"'{target_location}'"
         )
 
         coords = MUSEUM_LOCATIONS[target_location]
 
-        # ------------------------------------------
         # Create Nav2 goal
-        # ------------------------------------------
 
         goal_pose = PoseStamped()
 
@@ -175,56 +165,50 @@ def main():
         goal_pose.pose.orientation.w = 1.0
 
         print(
-            f"🚀 Dispatching robot to "
+            f" Dispatching robot to "
             f"{target_location}"
         )
 
         print(
-            f"📍 Target coordinates: "
+            f" Target coordinates: "
             f"X={coords['x']}, Y={coords['y']}\n"
         )
 
-        # ------------------------------------------
         # Send goal to Nav2
-        # ------------------------------------------
 
         navigator.goToPose(goal_pose)
 
         while not navigator.isTaskComplete():
             time.sleep(0.1)
 
-        # ------------------------------------------
         # Check navigation result
-        # ------------------------------------------
 
         result = navigator.getResult()
 
         if result == TaskResult.SUCCEEDED:
 
             print(
-                "✅ Area secure. "
+                " Area secure. "
                 "Ready for next command.\n"
             )
 
         elif result == TaskResult.CANCELED:
 
             print(
-                "⚠️ Navigation was canceled.\n"
+                " Navigation was canceled.\n"
             )
 
         else:
 
             print(
-                "❌ Navigation failed.\n"
+                " Navigation failed.\n"
             )
 
     navigator.destroyNode()
     rclpy.shutdown()
 
 
-# ==========================================
 # 5. START PROGRAM
-# ==========================================
 
 if __name__ == "__main__":
     main()
