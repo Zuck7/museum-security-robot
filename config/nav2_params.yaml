@@ -1,0 +1,421 @@
+# =============================================================================
+# Nav2 parameters - museum security robot
+# =============================================================================
+# use_sim_time is injected by the launch file (RewrittenYaml), so it is not
+# repeated here.  If you ever run these nodes by hand, you MUST pass
+# -p use_sim_time:=true or every TF lookup will fail with "extrapolation into
+# the past": Gazebo stamps messages with /clock time while a default node
+# stamps with wall time, and the two never line up.
+#
+# Robot facts these numbers are derived from (see urdf/security_bot.urdf):
+#   widest point 0.25 m  ->  robot_radius 0.26
+#   laser plane  0.23 m, range 12 m, 270 rays at 10 Hz
+#   narrowest doorway 1.80 m
+# =============================================================================
+
+amcl:
+  ros__parameters:
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    global_frame_id: "map"
+    scan_topic: scan
+
+    # Differential-drive noise model.  alpha1/2 = rotation noise from
+    # rotation/translation, alpha3/4 = translation noise.  Simulated odometry
+    # is much cleaner than a real robot's, so these are below the defaults.
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    alpha1: 0.1
+    alpha2: 0.1
+    alpha3: 0.1
+    alpha4: 0.1
+    alpha5: 0.1
+
+    # Beam model weights.  z_hit dominates because our ground-truth map
+    # matches the world almost exactly - there is very little unmodelled
+    # clutter for z_rand to absorb.
+    laser_model_type: "likelihood_field"
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 12.0
+    laser_min_range: 0.15
+    max_beams: 90
+    z_hit: 0.7
+    z_rand: 0.3
+    z_max: 0.05
+    z_short: 0.05
+    sigma_hit: 0.15
+    lambda_short: 0.1
+
+    min_particles: 500
+    max_particles: 2000
+    pf_err: 0.05
+    pf_z: 0.99
+    resample_interval: 1
+
+    # Resample only after the robot has actually moved.  Resampling while
+    # stationary throws away particle diversity for nothing.
+    update_min_d: 0.20
+    update_min_a: 0.20
+
+    # Adaptive recovery (particle injection when the filter gets lost).
+    # Left at 0.0 = disabled, because with a ground-truth map a divergence
+    # means something is genuinely wrong and you want to see it, not have it
+    # papered over.
+    recovery_alpha_slow: 0.0
+    recovery_alpha_fast: 0.0
+
+    do_beamskip: false
+    beam_skip_distance: 0.5
+    beam_skip_threshold: 0.3
+    beam_skip_error_threshold: 0.9
+
+    tf_broadcast: true
+    transform_tolerance: 0.5
+    save_pose_rate: 0.5
+    set_initial_pose: false          # the AI navigator sets it explicitly
+
+bt_navigator:
+  ros__parameters:
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    wait_for_service_timeout: 1000
+    action_server_result_timeout: 900.0
+    navigators: ["navigate_to_pose", "navigate_through_poses"]
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+    navigate_through_poses:
+      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+    error_code_names:
+      - compute_path_error_code
+      - follow_path_error_code
+
+controller_server:
+  ros__parameters:
+    controller_frequency: 20.0
+    costmap_update_timeout: 0.30
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+    use_realtime_priority: false
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      # "you must cover 0.5 m within 10 s or I declare you stuck".  Raised
+      # from the default allowance because squeezing through a 1.8 m doorway
+      # legitimately involves some slow shuffling.
+      required_movement_radius: 0.5
+      movement_time_allowance: 15.0
+
+    general_goal_checker:
+      stateful: True
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.20
+      yaw_goal_tolerance: 0.20
+
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      # MPPI rolls out `batch_size` random control sequences `time_steps`
+      # long, scores each with the critics below, and takes a weighted
+      # average.  Bigger batch = smoother but heavier; 1500 is a reasonable
+      # compromise for a VM.
+      time_steps: 48
+      model_dt: 0.05
+      batch_size: 1500
+      iteration_count: 1
+
+      vx_max: 0.45
+      vx_min: -0.25
+      vy_max: 0.0            # differential drive cannot strafe
+      wz_max: 1.5
+
+      vx_std: 0.2
+      vy_std: 0.0
+      wz_std: 0.4
+
+      ax_max: 1.5
+      ax_min: -1.5
+      ay_max: 0.0
+      az_max: 3.0
+
+      prune_distance: 1.7
+      transform_tolerance: 0.2
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: "DiffDrive"
+      visualize: true
+      regenerate_noises: true
+
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic",
+                "PathAlignCritic", "PathFollowCritic", "PathAngleCritic",
+                "PreferForwardCritic"]
+
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+        near_collision_cost: 253
+        critical_cost: 300.0
+        # Circular footprint, so per-point checking is accurate enough and
+        # far cheaper than polygon checking.
+        consider_footprint: false
+        collision_cost: 1000000.0
+        near_goal_distance: 1.0
+        trajectory_point_step: 2
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+        mode: 0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      # 5 m window - wide enough that MPPI's ~2.4 s horizon at 0.45 m/s never
+      # plans past the edge of it.
+      width: 5
+      height: 5
+      resolution: 0.05
+      robot_radius: 0.26
+
+      plugins: ["obstacle_layer", "inflation_layer"]
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          data_type: "LaserScan"
+          marking: True
+          clearing: True
+          # Must stay below the lidar's 12 m range, and raytrace must exceed
+          # obstacle range or stale marks never get cleared.
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+          max_obstacle_height: 2.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        # 0.55 m of inflation on a 1.80 m doorway leaves a clean corridor of
+        # preferred cost down the middle.  The old 0.70 made every doorway
+        # look like a wall of high cost and the planner would dither.
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+      always_send_full_costmap: True
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      resolution: 0.05
+      robot_radius: 0.26
+      # Our map covers the whole building, so unknown space is genuinely
+      # outside the walls and should never be planned through.
+      track_unknown_space: true
+
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          data_type: "LaserScan"
+          marking: True
+          clearing: True
+          raytrace_max_range: 8.0
+          raytrace_min_range: 0.0
+          obstacle_max_range: 6.0
+          obstacle_min_range: 0.0
+          max_obstacle_height: 2.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.55
+
+      always_send_full_costmap: True
+
+map_server:
+  ros__parameters:
+    yaml_filename: ""        # supplied by the launch file
+
+map_saver:
+  ros__parameters:
+    save_map_timeout: 5.0
+    free_thresh_default: 0.25
+    occupied_thresh_default: 0.65
+    map_subscribe_transient_local: True
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 20.0
+    planner_plugins: ["GridBased"]
+    costmap_update_timeout: 1.0
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.5
+      use_astar: false
+      # false, because our map's unknown space is the outdoors.  Letting the
+      # planner route through it would produce paths that leave the building.
+      allow_unknown: false
+
+smoother_server:
+  ros__parameters:
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
+
+behavior_server:
+  ros__parameters:
+    local_costmap_topic: local_costmap/costmap_raw
+    global_costmap_topic: global_costmap/costmap_raw
+    local_footprint_topic: local_costmap/published_footprint
+    global_footprint_topic: global_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    assisted_teleop:
+      plugin: "nav2_behaviors::AssistedTeleop"
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.2
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 1.0
+    min_rotational_vel: 0.4
+    rotational_acc_lim: 3.0
+
+waypoint_follower:
+  ros__parameters:
+    loop_rate: 20
+    stop_on_failure: false
+    action_server_result_timeout: 900.0
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: True
+      waypoint_pause_duration: 2000     # ms - pause 2 s to "inspect" each stop
+
+velocity_smoother:
+  ros__parameters:
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    # [x, y, theta] - must not exceed the MPPI limits above or the smoother
+    # becomes a no-op ceiling that never actually clamps anything.
+    max_velocity: [0.45, 0.0, 1.5]
+    min_velocity: [-0.25, 0.0, -1.5]
+    max_accel: [1.5, 0.0, 3.0]
+    max_decel: [-1.5, 0.0, -3.0]
+    odom_topic: "odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+
+collision_monitor:
+  ros__parameters:
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    # The velocity pipeline is:
+    #   controller_server -> /cmd_vel_nav
+    #   velocity_smoother -> /cmd_vel_smoothed
+    #   collision_monitor -> /cmd_vel   (what Gazebo subscribes to)
+    # The launch file remaps controller_server and velocity_smoother onto
+    # those names.  Without those remaps the smoother's default input is
+    # /cmd_vel, which is also the monitor's OUTPUT - a feedback loop.
+    cmd_vel_in_topic: "cmd_vel_smoothed"
+    cmd_vel_out_topic: "cmd_vel"
+    state_topic: "collision_monitor_state"
+    transform_tolerance: 0.2
+    source_timeout: 1.0
+    base_shift_correction: True
+    stop_pub_timeout: 2.0
+    polygons: ["FootprintApproach"]
+    FootprintApproach:
+      type: "polygon"
+      action_type: "approach"
+      footprint_topic: "/local_costmap/published_footprint"
+      time_before_collision: 1.2
+      simulation_time_step: 0.1
+      min_points: 6
+      visualize: False
+      enabled: True
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "scan"
+      enabled: True

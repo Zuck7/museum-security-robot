@@ -1,0 +1,50 @@
+# =============================================================================
+# ros_gz_bridge - the "translator" between Gazebo transport and ROS 2 topics
+# =============================================================================
+# Gazebo and ROS 2 use completely separate message systems.  Nothing crosses
+# between them unless it is listed here.  If a topic seems dead, check this
+# file first: a missing entry looks exactly like a broken sensor.
+#
+# direction:  GZ_TO_ROS (sensor data out)  |  ROS_TO_GZ (commands in)
+# =============================================================================
+
+# Simulation clock.  Everything else depends on this: with use_sim_time true,
+# every node reads /clock instead of the wall clock.  Bridge it first.
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# Velocity commands.  This is the LAST stage of the Nav2 pipeline
+# (collision_monitor's output), not the controller's raw output.
+- ros_topic_name: "/cmd_vel"
+  gz_topic_name: "/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "gz.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# Wheel odometry from the DiffDrive plugin.
+- ros_topic_name: "/odom"
+  gz_topic_name: "/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+# 2D laser scan.  Arrives stamped with frame_id "lidar_link" because the URDF
+# sets <gz_frame_id>.  Without that it would be "security_bot/lidar_link/lidar"
+# and every costmap would silently discard it.
+- ros_topic_name: "/scan"
+  gz_topic_name: "/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+# Wheel joint angles, so robot_state_publisher can put the wheel frames in TF.
+# Note the gz side is a long scoped name and the type is gz.msgs.Model - that
+# is how the JointStatePublisher system publishes.
+- ros_topic_name: "/joint_states"
+  gz_topic_name: "/world/museum_world/model/security_bot/joint_state"
+  ros_type_name: "sensor_msgs/msg/JointState"
+  gz_type_name: "gz.msgs.Model"
+  direction: GZ_TO_ROS

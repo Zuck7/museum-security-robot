@@ -1,0 +1,78 @@
+{
+  "_comment": "Tool (function-calling) definitions exposed to the LLM. Deliverable: 'LLM / LangChain tool configuration files -> Tool definitions'. The schema is Gemini's function-declaration format; the same shape maps onto LangChain StructuredTool or OpenAI tools with no semantic change.",
+  "tools": [
+    {
+      "name": "navigate_to",
+      "description": "Send the security robot to one single named location in the museum and wait until it arrives. Use this for any instruction that identifies one place to go and check.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "location": {
+            "type": "string",
+            "description": "Exact key from the museum location list. Must match one of the allowed values.",
+            "enum": ["main_lobby", "ai_innovation_wing", "renaissance_gallery",
+                     "dinosaur_hall", "cafeteria", "central_atrium",
+                     "west_fire_exit", "security_office"]
+          },
+          "reason": {
+            "type": "string",
+            "description": "One short sentence explaining why this location matches the operator's instruction. Shown in the console so the operator can audit the decision."
+          }
+        },
+        "required": ["location", "reason"]
+      }
+    },
+    {
+      "name": "patrol_route",
+      "description": "Visit several named locations in order, pausing at each. Use this when the instruction covers an area rather than a single room ('sweep the west side', 'do a full round', 'check both galleries').",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "locations": {
+            "type": "array",
+            "description": "Two to eight location keys, in the order they should be visited.",
+            "items": {
+              "type": "string",
+              "enum": ["main_lobby", "ai_innovation_wing", "renaissance_gallery",
+                       "dinosaur_hall", "cafeteria", "central_atrium",
+                       "west_fire_exit", "security_office"]
+            }
+          },
+          "reason": {
+            "type": "string",
+            "description": "One short sentence explaining the route choice."
+          }
+        },
+        "required": ["locations", "reason"]
+      }
+    },
+    {
+      "name": "report_status",
+      "description": "Answer a question about the robot or the museum without moving. Use for 'where are you', 'what rooms exist', 'what can you do'.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string",
+            "description": "A short plain-language answer for the operator."
+          }
+        },
+        "required": ["answer"]
+      }
+    },
+    {
+      "name": "reject_command",
+      "description": "Decline an instruction that does not correspond to any museum location or any capability the robot has. Never guess a location when the instruction is genuinely unrelated.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "explanation": {
+            "type": "string",
+            "description": "Why the instruction could not be mapped to an action."
+          }
+        },
+        "required": ["explanation"]
+      }
+    }
+  ]
+}
