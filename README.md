@@ -5,6 +5,10 @@ museum, localises with AMCL against a slam_toolbox map, plans and executes
 paths with Nav2, and takes its orders from a Gemini LLM that translates plain
 English into navigation goals.
 
+![museum world and security robot in Gazebo](robot_map.png)
+*The simulated museum — galleries, corridors, and the differential-drive
+security robot (bottom center) — running in Gazebo.*
+
 ![architecture](docs/system_architecture.png)
 
 ---
